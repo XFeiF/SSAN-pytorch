@@ -11,7 +11,7 @@ class SSA(nn.Module):
 
         self.to_qkv = nn.Conv2d(dim, dim * 3, kernel_size = 1)
         self.attend = nn.Softmax(dim = -1)
-        self.to_temporal_qkv = nn.Conv3d(dim, dim * 3, 
+        self.to_temporal_qk = nn.Conv3d(dim, dim * 2, 
                                   kernel_size=(3, 1, 1), 
                                   padding=(1, 0, 0))
 
@@ -37,9 +37,10 @@ class SSA(nn.Module):
         x_hat = rearrange(x_hat, '(b t) (h w) c -> b c t h w', t=t, h=h, w=w)
         
         # Temporal attention
-        t_qkv = self.to_temporal_qkv(x_hat)
-        tq, tk, tv = t_qkv.chunk(3, dim=1) # b, c, t, h, w
-        tq, tk, tv = map(lambda t: rearrange(t, 'b c t h w -> b t (c h w )'), (tq, tk, tv)) # b, t, d
+        t_qk = self.to_temporal_qkv(x_hat)
+        tq, tk = t_qk.chunk(2, dim=1) # b, c, t, h, w
+        tq, tk = map(lambda t: rearrange(t, 'b c t h w -> b t (c h w )'), (tq, tk)) # b, t, d
+        tv = rearrange(v, '(b t) (h w) c -> b t (c h w)', t=t, h=h, w=w) # shared value embedding
         dots = einsum('b i d, b j d -> b i j', tq, tk) # txt
         attn = torch.softmax(dots, dim=-1)
         out = einsum('b k t, b t d -> b k d', attn, tv) # txd
